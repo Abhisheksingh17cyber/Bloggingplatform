@@ -4,6 +4,8 @@ import {
   Eye, Clock, Tag, TrendingUp, BookOpen, Users, FileText,
   ChevronRight, Menu, X, Settings, Trash2, Edit, Plus
 } from 'lucide-react';
+import { supabase } from './lib/supabaseClient';
+import * as supabaseAPI from './lib/supabase';
 
 // Mock data for demo
 const mockUser = {
@@ -97,15 +99,16 @@ const categories = ['All', 'Technology', 'Lifestyle', 'Travel', 'Food', 'Health'
 
 export default function BloggingPlatform() {
   const [currentPage, setCurrentPage] = useState('home');
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
-  const [user, setUser] = useState(mockUser);
-  const [blogs, setBlogs] = useState(mockBlogs);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState(null);
+  const [blogs, setBlogs] = useState([]);
   const [selectedBlog, setSelectedBlog] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [comments, setComments] = useState(mockComments);
+  const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
+  const [loading, setLoading] = useState(true);
   const [blogForm, setBlogForm] = useState({
     title: '',
     content: '',
@@ -113,6 +116,76 @@ export default function BloggingPlatform() {
     coverImage: '',
     tags: ''
   });
+
+  // Check authentication status on mount
+  useEffect(() => {
+    checkUser();
+    
+    // Listen for auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const profile = await supabaseAPI.getUserProfile(session.user.id);
+        setUser(profile);
+        setIsLoggedIn(true);
+      } else {
+        setUser(null);
+        setIsLoggedIn(false);
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Fetch blogs on mount and when category changes
+  useEffect(() => {
+    fetchBlogs();
+  }, [selectedCategory]);
+
+  // Fetch comments when blog is selected
+  useEffect(() => {
+    if (selectedBlog) {
+      fetchComments(selectedBlog.id);
+    }
+  }, [selectedBlog]);
+
+  const checkUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const profile = await supabaseAPI.getUserProfile(session.user.id);
+        setUser(profile);
+        setIsLoggedIn(true);
+      }
+    } catch (error) {
+      console.error('Error checking user:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchBlogs = async () => {
+    try {
+      setLoading(true);
+      const category = selectedCategory === 'All' ? null : selectedCategory;
+      const fetchedBlogs = await supabaseAPI.getBlogs(category);
+      setBlogs(fetchedBlogs);
+    } catch (error) {
+      console.error('Error fetching blogs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchComments = async (blogId) => {
+    try {
+      const fetchedComments = await supabaseAPI.getComments(blogId);
+      setComments(fetchedComments);
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+    }
+  };
 
   const filteredBlogs = blogs.filter(blog => {
     const matchesCategory = selectedCategory === 'All' || blog.category === selectedCategory;
@@ -122,57 +195,119 @@ export default function BloggingPlatform() {
     return matchesCategory && matchesSearch;
   });
 
-  const handleLike = (blogId) => {
-    setBlogs(blogs.map(blog => {
-      if (blog.id === blogId) {
-        return {
-          ...blog,
-          likes: blog.isLiked ? blog.likes - 1 : blog.likes + 1,
-          isLiked: !blog.isLiked
-        };
-      }
-      return blog;
-    }));
-  };
-
-  const handleAddComment = (e) => {
-    e.preventDefault();
-    if (newComment.trim()) {
-      const comment = {
-        id: Date.now().toString(),
-        user: { username: user.username, profileImage: user.profileImage },
-        content: newComment,
-        createdAt: new Date().toISOString()
-      };
-      setComments([comment, ...comments]);
-      setNewComment('');
+  const handleLike = async (blogId) => {
+    if (!isLoggedIn) {
+      alert('Please login to like blogs');
+      return;
+    }
+    
+    try {
+      await supabaseAPI.toggleLike(blogId, user.id);
+      // Update local state
+      setBlogs(blogs.map(blog => {
+        if (blog.id === blogId) {
+          const isCurrentlyLiked = blog.user_likes?.length > 0;
+          return {
+            ...blog,
+            likes: isCurrentlyLiked ? blog.likes - 1 : blog.likes + 1,
+            user_likes: isCurrentlyLiked ? [] : [{ user_id: user.id }]
+          };
+        }
+        return blog;
+      }));
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      alert('Failed to update like');
     }
   };
 
-  const handleCreateBlog = (e) => {
+  const handleAddComment = async (e) => {
     e.preventDefault();
-    const newBlog = {
-      id: Date.now().toString(),
-      ...blogForm,
-      author: user,
-      likes: 0,
-      commentsCount: 0,
-      views: 0,
-      tags: blogForm.tags.split(',').map(t => t.trim()),
-      createdAt: new Date().toISOString(),
-      isLiked: false,
-      excerpt: blogForm.content.substring(0, 150) + '...'
-    };
-    setBlogs([newBlog, ...blogs]);
-    setBlogForm({ title: '', content: '', category: 'Technology', coverImage: '', tags: '' });
-    setCurrentPage('home');
+    if (!isLoggedIn) {
+      alert('Please login to comment');
+      return;
+    }
+    
+    if (newComment.trim()) {
+      try {
+        const comment = await supabaseAPI.createComment(selectedBlog.id, user.id, newComment);
+        setComments([comment, ...comments]);
+        setNewComment('');
+        
+        // Update comments count
+        setBlogs(blogs.map(blog => 
+          blog.id === selectedBlog.id 
+            ? { ...blog, comments: [...(blog.comments || []), comment] }
+            : blog
+        ));
+      } catch (error) {
+        console.error('Error adding comment:', error);
+        alert('Failed to add comment');
+      }
+    }
   };
 
-  const handleDeleteBlog = (blogId) => {
-    setBlogs(blogs.filter(b => b.id !== blogId));
-    if (selectedBlog?.id === blogId) {
-      setSelectedBlog(null);
+  const handleCreateBlog = async (e) => {
+    e.preventDefault();
+    if (!isLoggedIn) {
+      alert('Please login to create blogs');
+      return;
+    }
+    
+    try {
+      const tags = blogForm.tags.split(',').map(t => t.trim()).filter(Boolean);
+      const newBlog = await supabaseAPI.createBlog({
+        title: blogForm.title,
+        content: blogForm.content,
+        excerpt: blogForm.content.substring(0, 150).replace(/<[^>]*>/g, '') + '...',
+        category: blogForm.category,
+        cover_image: blogForm.coverImage,
+        tags,
+        author_id: user.id
+      });
+      
+      setBlogs([newBlog, ...blogs]);
+      setBlogForm({ title: '', content: '', category: 'Technology', coverImage: '', tags: '' });
       setCurrentPage('home');
+      alert('Blog created successfully!');
+    } catch (error) {
+      console.error('Error creating blog:', error);
+      alert('Failed to create blog');
+    }
+  };
+
+  const handleDeleteBlog = async (blogId) => {
+    if (!isLoggedIn) {
+      alert('Please login to delete blogs');
+      return;
+    }
+    
+    if (!confirm('Are you sure you want to delete this blog?')) {
+      return;
+    }
+    
+    try {
+      await supabaseAPI.deleteBlog(blogId);
+      setBlogs(blogs.filter(b => b.id !== blogId));
+      if (selectedBlog?.id === blogId) {
+        setSelectedBlog(null);
+        setCurrentPage('home');
+      }
+      alert('Blog deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting blog:', error);
+      alert('Failed to delete blog');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabaseAPI.signOut();
+      setUser(null);
+      setIsLoggedIn(false);
+      setCurrentPage('home');
+    } catch (error) {
+      console.error('Error signing out:', error);
     }
   };
 
@@ -241,11 +376,11 @@ export default function BloggingPlatform() {
 
           <div className="hidden md:flex items-center space-x-4">
             <div className="flex items-center space-x-3 bg-gray-50 px-4 py-2 rounded-lg">
-              <img src={user.profileImage} alt={user.username} className="w-8 h-8 rounded-full" />
-              <span className="font-medium text-gray-700">{user.username}</span>
+              <img src={user?.profile_image || user?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`} alt={user?.username} className="w-8 h-8 rounded-full" />
+              <span className="font-medium text-gray-700">{user?.username}</span>
             </div>
             <button 
-              onClick={() => setIsLoggedIn(false)}
+              onClick={handleLogout}
               className="flex items-center space-x-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
             >
               <LogOut className="w-5 h-5" />
@@ -370,7 +505,7 @@ export default function BloggingPlatform() {
           >
             <div className="relative h-48 overflow-hidden">
               <img 
-                src={blog.coverImage} 
+                src={blog.cover_image || blog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
                 alt={blog.title}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
               />
@@ -390,7 +525,7 @@ export default function BloggingPlatform() {
               </p>
 
               <div className="flex flex-wrap gap-2 mb-4">
-                {blog.tags.slice(0, 3).map((tag, idx) => (
+                {(blog.tags || []).slice(0, 3).map((tag, idx) => (
                   <span key={idx} className="flex items-center space-x-1 text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
                     <Tag className="w-3 h-3" />
                     <span>{tag}</span>
@@ -401,13 +536,13 @@ export default function BloggingPlatform() {
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center space-x-2">
                   <img 
-                    src={blog.author.profileImage} 
-                    alt={blog.author.username}
+                    src={blog.profiles?.profile_image || blog.author?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${blog.profiles?.username || blog.author?.username}`} 
+                    alt={blog.profiles?.username || blog.author?.username}
                     className="w-8 h-8 rounded-full"
                   />
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{blog.author.username}</p>
-                    <p className="text-xs text-gray-500">{formatDate(blog.createdAt)}</p>
+                    <p className="text-sm font-medium text-gray-900">{blog.profiles?.username || blog.author?.username}</p>
+                    <p className="text-xs text-gray-500">{formatDate(blog.created_at || blog.createdAt)}</p>
                   </div>
                 </div>
               </div>
@@ -415,16 +550,16 @@ export default function BloggingPlatform() {
               <div className="flex items-center justify-between mt-4 text-gray-600 text-sm">
                 <div className="flex items-center space-x-4">
                   <span className="flex items-center space-x-1">
-                    <Heart className={`w-4 h-4 ${blog.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-                    <span>{blog.likes}</span>
+                    <Heart className={`w-4 h-4 ${(blog.user_likes && blog.user_likes.length > 0) || blog.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+                    <span>{blog.likes || 0}</span>
                   </span>
                   <span className="flex items-center space-x-1">
                     <MessageCircle className="w-4 h-4" />
-                    <span>{blog.commentsCount}</span>
+                    <span>{blog.comments?.length || blog.commentsCount || 0}</span>
                   </span>
                   <span className="flex items-center space-x-1">
                     <Eye className="w-4 h-4" />
-                    <span>{blog.views}</span>
+                    <span>{blog.views || 0}</span>
                   </span>
                 </div>
                 <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
@@ -460,7 +595,7 @@ export default function BloggingPlatform() {
 
         <article className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <img 
-            src={selectedBlog.coverImage} 
+            src={selectedBlog.cover_image || selectedBlog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
             alt={selectedBlog.title}
             className="w-full h-96 object-cover"
           />
@@ -472,7 +607,7 @@ export default function BloggingPlatform() {
               </span>
               <span className="flex items-center space-x-1 text-gray-500 text-sm">
                 <Clock className="w-4 h-4" />
-                <span>{formatDate(selectedBlog.createdAt)}</span>
+                <span>{formatDate(selectedBlog.created_at || selectedBlog.createdAt)}</span>
               </span>
             </div>
 
@@ -483,12 +618,12 @@ export default function BloggingPlatform() {
             <div className="flex items-center justify-between mb-8 pb-8 border-b">
               <div className="flex items-center space-x-3">
                 <img 
-                  src={selectedBlog.author.profileImage} 
-                  alt={selectedBlog.author.username}
+                  src={selectedBlog.profiles?.profile_image || selectedBlog.author?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedBlog.profiles?.username || selectedBlog.author?.username}`} 
+                  alt={selectedBlog.profiles?.username || selectedBlog.author?.username}
                   className="w-12 h-12 rounded-full"
                 />
                 <div>
-                  <p className="font-semibold text-gray-900">{selectedBlog.author.username}</p>
+                  <p className="font-semibold text-gray-900">{selectedBlog.profiles?.username || selectedBlog.author?.username}</p>
                   <p className="text-sm text-gray-500">Author</p>
                 </div>
               </div>
@@ -497,17 +632,17 @@ export default function BloggingPlatform() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleLike(selectedBlog.id); }}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
-                    selectedBlog.isLiked 
+                    (selectedBlog.user_likes && selectedBlog.user_likes.length > 0) || selectedBlog.isLiked
                       ? 'bg-red-50 text-red-600' 
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  <Heart className={`w-5 h-5 ${selectedBlog.isLiked ? 'fill-current' : ''}`} />
-                  <span className="font-semibold">{selectedBlog.likes}</span>
+                  <Heart className={`w-5 h-5 ${(selectedBlog.user_likes && selectedBlog.user_likes.length > 0) || selectedBlog.isLiked ? 'fill-current' : ''}`} />
+                  <span className="font-semibold">{selectedBlog.likes || 0}</span>
                 </button>
                 <div className="flex items-center space-x-2 text-gray-600">
                   <Eye className="w-5 h-5" />
-                  <span>{selectedBlog.views} views</span>
+                  <span>{selectedBlog.views || 0} views</span>
                 </div>
               </div>
             </div>
@@ -551,14 +686,14 @@ export default function BloggingPlatform() {
                   <div key={comment.id} className="bg-gray-50 rounded-xl p-4">
                     <div className="flex items-start space-x-3">
                       <img 
-                        src={comment.user.profileImage} 
-                        alt={comment.user.username}
+                        src={comment.profiles?.profile_image || comment.user?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.profiles?.username || comment.user?.username}`} 
+                        alt={comment.profiles?.username || comment.user?.username}
                         className="w-10 h-10 rounded-full"
                       />
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-semibold text-gray-900">{comment.user.username}</span>
-                          <span className="text-sm text-gray-500">{formatDate(comment.createdAt)}</span>
+                          <span className="font-semibold text-gray-900">{comment.profiles?.username || comment.user?.username}</span>
+                          <span className="text-sm text-gray-500">{formatDate(comment.created_at || comment.createdAt)}</span>
                         </div>
                         <p className="text-gray-700">{comment.content}</p>
                       </div>
@@ -673,31 +808,31 @@ export default function BloggingPlatform() {
 
   // Profile Page
   const ProfilePage = () => {
-    const userBlogs = blogs.filter(b => b.author.username === user.username);
+    const userBlogs = blogs.filter(b => (b.profiles?.id || b.author?.id || b.author_id) === user.id);
 
     return (
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 mb-8 text-white">
           <div className="flex items-center space-x-6">
             <img 
-              src={user.profileImage} 
-              alt={user.username}
+              src={user?.profile_image || user?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`} 
+              alt={user?.username}
               className="w-24 h-24 rounded-full border-4 border-white shadow-xl"
             />
             <div>
-              <h1 className="text-3xl font-bold mb-2">{user.username}</h1>
-              <p className="text-xl opacity-90 mb-4">{user.bio}</p>
+              <h1 className="text-3xl font-bold mb-2">{user?.username}</h1>
+              <p className="text-xl opacity-90 mb-4">{user?.bio || 'No bio yet'}</p>
               <div className="flex items-center space-x-6">
                 <div>
                   <p className="text-2xl font-bold">{userBlogs.length}</p>
                   <p className="text-sm opacity-80">Posts</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{userBlogs.reduce((acc, b) => acc + b.likes, 0)}</p>
+                  <p className="text-2xl font-bold">{userBlogs.reduce((acc, b) => acc + (b.likes || 0), 0)}</p>
                   <p className="text-sm opacity-80">Likes</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{userBlogs.reduce((acc, b) => acc + b.views, 0)}</p>
+                  <p className="text-2xl font-bold">{userBlogs.reduce((acc, b) => acc + (b.views || 0), 0)}</p>
                   <p className="text-sm opacity-80">Views</p>
                 </div>
               </div>
@@ -727,7 +862,7 @@ export default function BloggingPlatform() {
               <div key={blog.id} className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all overflow-hidden">
                 <div className="relative h-48 overflow-hidden">
                   <img 
-                    src={blog.coverImage} 
+                    src={blog.cover_image || blog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
                     alt={blog.title}
                     className="w-full h-full object-cover"
                   />
@@ -743,13 +878,13 @@ export default function BloggingPlatform() {
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
                     <span className="flex items-center space-x-1">
                       <Heart className="w-4 h-4" />
-                      <span>{blog.likes} likes</span>
+                      <span>{blog.likes || 0} likes</span>
                     </span>
                     <span className="flex items-center space-x-1">
                       <Eye className="w-4 h-4" />
-                      <span>{blog.views} views</span>
+                      <span>{blog.views || 0} views</span>
                     </span>
-                    <span>{formatDate(blog.createdAt)}</span>
+                    <span>{formatDate(blog.created_at || blog.createdAt)}</span>
                   </div>
 
                   <div className="flex items-center space-x-2 pt-4 border-t">
@@ -819,7 +954,7 @@ export default function BloggingPlatform() {
             <div key={blog.id} className="flex items-center justify-between p-4 border-2 border-gray-100 rounded-xl hover:border-purple-200 transition-colors">
               <div className="flex items-center space-x-4 flex-1">
                 <img 
-                  src={blog.coverImage} 
+                  src={blog.cover_image || blog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
                   alt={blog.title}
                   className="w-20 h-20 rounded-lg object-cover"
                 />
@@ -828,17 +963,17 @@ export default function BloggingPlatform() {
                   <div className="flex items-center space-x-4 text-sm text-gray-600">
                     <span className="flex items-center space-x-1">
                       <User className="w-4 h-4" />
-                      <span>{blog.author.username}</span>
+                      <span>{blog.profiles?.username || blog.author?.username}</span>
                     </span>
                     <span className="flex items-center space-x-1">
                       <Heart className="w-4 h-4" />
-                      <span>{blog.likes}</span>
+                      <span>{blog.likes || 0}</span>
                     </span>
                     <span className="flex items-center space-x-1">
                       <Eye className="w-4 h-4" />
-                      <span>{blog.views}</span>
+                      <span>{blog.views || 0}</span>
                     </span>
-                    <span>{formatDate(blog.createdAt)}</span>
+                    <span>{formatDate(blog.created_at || blog.createdAt)}</span>
                   </div>
                 </div>
               </div>
@@ -903,57 +1038,131 @@ export default function BloggingPlatform() {
   );
 
   // Login Page
-  const LoginPage = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-        <div className="text-center mb-8">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <BookOpen className="w-8 h-8 text-white" />
+  const LoginPage = () => {
+    const [isSignUp, setIsSignUp] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [username, setUsername] = useState('');
+    const [authLoading, setAuthLoading] = useState(false);
+
+    const handleAuth = async (e) => {
+      e.preventDefault();
+      setAuthLoading(true);
+
+      try {
+        if (isSignUp) {
+          const result = await supabaseAPI.signUp(email, password, username);
+          if (result.error) {
+            alert(result.error.message);
+          } else {
+            alert('Sign up successful! Please check your email to verify your account.');
+          }
+        } else {
+          const result = await supabaseAPI.signIn(email, password);
+          if (result.error) {
+            alert(result.error.message);
+          } else {
+            const profile = await supabaseAPI.getUserProfile(result.data.user.id);
+            setUser(profile);
+            setIsLoggedIn(true);
+          }
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
+        alert('Authentication failed. Please try again.');
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+          <div className="text-center mb-8">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Welcome to BlogHub
+            </h2>
+            <p className="text-gray-600 mt-2">
+              {isSignUp ? 'Create your account' : 'Sign in to continue your journey'}
+            </p>
           </div>
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Welcome to BlogHub
-          </h2>
-          <p className="text-gray-600 mt-2">Sign in to continue your journey</p>
+
+          <form onSubmit={handleAuth} className="space-y-6">
+            {isSignUp && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Username</label>
+                <input
+                  type="text"
+                  placeholder="johndoe"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                  required
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+              <input
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <button 
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {authLoading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+            </button>
+          </form>
+
+          <p className="text-center text-gray-600 mt-6">
+            {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+            <button 
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-blue-600 font-semibold ml-2 hover:underline"
+            >
+              {isSignUp ? 'Sign In' : 'Sign Up'}
+            </button>
+          </p>
         </div>
-
-        <form onSubmit={(e) => { e.preventDefault(); setIsLoggedIn(true); }} className="space-y-6">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-            <input
-              type="email"
-              placeholder="your@email.com"
-              className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
-              required
-            />
-          </div>
-
-          <button 
-            type="submit"
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl hover:shadow-lg transition-all font-semibold"
-          >
-            Sign In
-          </button>
-        </form>
-
-        <p className="text-center text-gray-600 mt-6">
-          Don't have an account? 
-          <button className="text-blue-600 font-semibold ml-2 hover:underline">
-            Sign Up
-          </button>
-        </p>
       </div>
-    </div>
-  );
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return <LoginPage />;
@@ -967,7 +1176,7 @@ export default function BloggingPlatform() {
       {currentPage === 'detail' && <BlogDetailPage />}
       {currentPage === 'create' && <CreateBlogPage />}
       {currentPage === 'profile' && <ProfilePage />}
-      {currentPage === 'admin' && user.isAdmin && <AdminDashboardPage />}
+      {currentPage === 'admin' && user?.is_admin && <AdminDashboardPage />}
     </div>
   );
 }

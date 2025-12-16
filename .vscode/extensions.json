@@ -3,6 +3,7 @@
     "bradlc.vscode-tailwindcss",
     "ms-vscode.vscode-typescript-next",
     "esbenp.prettier-vscode",
-    "ms-vscode.vscode-json"
+    "ms-vscode.vscode-json",
+    "Supabase.vscode-supabase-extension"
   ]
 }
