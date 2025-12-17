@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { 
   Home, PenSquare, User, LogOut, Search, Heart, MessageCircle, 
   Eye, Clock, Tag, TrendingUp, BookOpen, Users, FileText,
@@ -55,23 +55,22 @@ export default function BloggingPlatform() {
   const [username, setUsername] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Check authentication status on mount
+  // Check authentication status on mount - optimized
   useEffect(() => {
     let mounted = true;
     
     const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted && session?.user) {
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-          if (mounted) {
-            setUser(profile);
+        const currentUser = await getCurrentUser();
+        if (mounted) {
+          if (currentUser) {
+            setUser(currentUser);
             setIsLoggedIn(true);
           }
+          setLoading(false);
         }
       } catch (error) {
         console.error('Auth init error:', error);
-      } finally {
         if (mounted) setLoading(false);
       }
     };
@@ -83,12 +82,16 @@ export default function BloggingPlatform() {
     };
   }, []);
 
-  // Fetch blogs on mount and when category changes
+  // Fetch blogs only when category changes - optimized and deferred
   useEffect(() => {
-    if (isLoggedIn || !loading) {
-      fetchBlogs();
+    if (isLoggedIn && currentPage === 'home') {
+      // Defer blog fetch to allow UI to render first
+      const timer = setTimeout(() => {
+        fetchBlogs();
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [selectedCategory, isLoggedIn, loading]);
+  }, [selectedCategory, isLoggedIn, currentPage]);
 
   // Fetch comments when blog is selected
   useEffect(() => {
@@ -97,30 +100,13 @@ export default function BloggingPlatform() {
     }
   }, [selectedBlog?.id]);
 
-  const checkUser = async () => {
-    try {
-      const currentUser = await getCurrentUser();
-      if (currentUser) {
-        setUser(currentUser);
-        setIsLoggedIn(true);
-      }
-    } catch (error) {
-      console.error('Error checking user:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchBlogs = async () => {
     try {
-      setLoading(true);
-      const { data, error } = await getBlogs(selectedCategory, searchQuery);
+      const { data, error } = await getBlogs(selectedCategory, '');
       if (error) throw error;
       setBlogs(data);
     } catch (error) {
       console.error('Error fetching blogs:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -450,7 +436,6 @@ export default function BloggingPlatform() {
             placeholder="Search articles, topics, authors..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && fetchBlogs()}
             className="w-full pl-14 pr-6 py-4 bg-white border-2 border-gray-200 rounded-2xl focus:border-blue-500 focus:outline-none transition-all shadow-sm hover:shadow-md text-gray-800 placeholder-gray-400"
           />
         </div>
@@ -1103,10 +1088,7 @@ export default function BloggingPlatform() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
