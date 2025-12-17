@@ -712,128 +712,6 @@ export default function BloggingPlatform() {
     );
   };
 
-  // Create Blog Page
-  const CreateBlogPage = () => (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="bg-white rounded-3xl shadow-xl p-8 md:p-12 border border-gray-100">
-        <div className="flex items-center space-x-4 mb-8">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 rounded-2xl">
-            <PenSquare className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Create New Post
-            </h1>
-            <p className="text-gray-500 mt-1">Share your story with the world</p>
-          </div>
-        </div>
-
-        <form onSubmit={handleCreateBlog} className="space-y-8">
-          {/* Title */}
-          <div>
-            <label className="block text-gray-800 font-semibold mb-3 text-lg">
-              Title
-            </label>
-            <input
-              type="text"
-              value={blogForm.title}
-              onChange={(e) => setBlogForm({ ...blogForm, title: e.target.value })}
-              className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
-              placeholder="Enter an engaging title..."
-              required
-            />
-          </div>
-
-          {/* Category and Tags */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-gray-800 font-semibold mb-3 text-lg">
-                Category
-              </label>
-              <select
-                value={blogForm.category}
-                onChange={(e) => setBlogForm({ ...blogForm, category: e.target.value })}
-                className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 hover:border-gray-300 bg-white"
-              >
-                {categories.filter(c => c !== 'All').map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-gray-800 font-semibold mb-3 text-lg">
-                Tags
-              </label>
-              <input
-                type="text"
-                value={blogForm.tags}
-                onChange={(e) => setBlogForm({ ...blogForm, tags: e.target.value })}
-                className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
-                placeholder="lifestyle, wellness, tips"
-              />
-              <p className="text-sm text-gray-500 mt-2">Separate tags with commas</p>
-            </div>
-          </div>
-
-          {/* Cover Image URL */}
-          <div>
-            <label className="block text-gray-800 font-semibold mb-3 text-lg">
-              Cover Image URL
-            </label>
-            <input
-              type="text"
-              value={blogForm.coverImage}
-              onChange={(e) => setBlogForm({ ...blogForm, coverImage: e.target.value })}
-              className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
-              placeholder="https://example.com/image.jpg"
-            />
-            <p className="text-sm text-gray-500 mt-2">Add a beautiful cover image for your post</p>
-          </div>
-
-          {/* Content */}
-          <div>
-            <label className="block text-gray-800 font-semibold mb-3 text-lg">
-              Content
-            </label>
-            <textarea
-              value={blogForm.content}
-              onChange={(e) => setBlogForm({ ...blogForm, content: e.target.value })}
-              rows="12"
-              className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300 leading-relaxed"
-              placeholder="Write your story here... You can use HTML tags for formatting."
-              required
-            />
-            <p className="text-sm text-gray-500 mt-2">
-              💡 Tip: Use HTML tags like &lt;h2&gt;, &lt;p&gt;, &lt;strong&gt; for rich formatting
-            </p>
-          </div>
-
-          {/* Submit Buttons */}
-          <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={() => {
-                setBlogForm({ title: '', content: '', category: 'Technology', coverImage: '', tags: '' });
-                setCurrentPage('home');
-              }}
-              className="px-8 py-4 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all hover:border-gray-400"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="group px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-xl font-semibold transition-all hover:scale-105 inline-flex items-center justify-center space-x-2"
-            >
-              <span>Publish Post</span>
-              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-
   // Profile Page
   const ProfilePage = () => {
     const [userBlogs, setUserBlogs] = useState([]);
@@ -1243,7 +1121,126 @@ export default function BloggingPlatform() {
       
       {currentPage === 'home' && <HomePage />}
       {currentPage === 'detail' && <BlogDetailPage />}
-      {currentPage === 'create' && <CreateBlogPage />}
+      {currentPage === 'create' && (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="bg-white rounded-3xl shadow-xl p-8 md:p-12 border border-gray-100">
+            <div className="flex items-center space-x-4 mb-8">
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 rounded-2xl">
+                <PenSquare className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  Create New Post
+                </h1>
+                <p className="text-gray-500 mt-1">Share your story with the world</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateBlog} className="space-y-8">
+              {/* Title */}
+              <div>
+                <label className="block text-gray-800 font-semibold mb-3 text-lg">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={blogForm.title}
+                  onChange={(e) => setBlogForm({ ...blogForm, title: e.target.value })}
+                  className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
+                  placeholder="Enter an engaging title..."
+                  required
+                />
+              </div>
+
+              {/* Category and Tags */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-gray-800 font-semibold mb-3 text-lg">
+                    Category
+                  </label>
+                  <select
+                    value={blogForm.category}
+                    onChange={(e) => setBlogForm({ ...blogForm, category: e.target.value })}
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 hover:border-gray-300 bg-white"
+                  >
+                    {categories.filter(c => c !== 'All').map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-800 font-semibold mb-3 text-lg">
+                    Tags
+                  </label>
+                  <input
+                    type="text"
+                    value={blogForm.tags}
+                    onChange={(e) => setBlogForm({ ...blogForm, tags: e.target.value })}
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
+                    placeholder="lifestyle, wellness, tips"
+                  />
+                  <p className="text-sm text-gray-500 mt-2">Separate tags with commas</p>
+                </div>
+              </div>
+
+              {/* Cover Image URL */}
+              <div>
+                <label className="block text-gray-800 font-semibold mb-3 text-lg">
+                  Cover Image URL
+                </label>
+                <input
+                  type="text"
+                  value={blogForm.coverImage}
+                  onChange={(e) => setBlogForm({ ...blogForm, coverImage: e.target.value })}
+                  className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
+                  placeholder="https://example.com/image.jpg"
+                />
+                <p className="text-sm text-gray-500 mt-2">Add a beautiful cover image for your post</p>
+              </div>
+
+              {/* Content */}
+              <div>
+                <label className="block text-gray-800 font-semibold mb-3 text-lg">
+                  Content
+                </label>
+                <textarea
+                  value={blogForm.content}
+                  onChange={(e) => setBlogForm({ ...blogForm, content: e.target.value })}
+                  rows="12"
+                  className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300 leading-relaxed"
+                  placeholder="Write your story here... You can use HTML tags for formatting."
+                  required
+                />
+                <p className="text-sm text-gray-500 mt-2">
+                  💡 Tip: Use HTML tags like &lt;h2&gt;, &lt;p&gt;, &lt;strong&gt; for rich formatting
+                </p>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBlogForm({ title: '', content: '', category: 'Technology', coverImage: '', tags: '' });
+                    setCurrentPage('home');
+                  }}
+                  className="px-8 py-4 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-all hover:border-gray-400"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="group px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-xl font-semibold transition-all hover:scale-105 inline-flex items-center justify-center space-x-2"
+                >
+                  <span>Publish Post</span>
+                  <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {currentPage === 'profile' && <ProfilePage />}
       {currentPage === 'admin' && user?.is_admin && <AdminDashboardPage />}
     </div>
