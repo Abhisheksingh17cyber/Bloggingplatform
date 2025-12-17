@@ -36,8 +36,6 @@ export default function BloggingPlatform() {
   const [selectedBlog, setSelectedBlog] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = React.useRef(null);
-  const commentInputRef = React.useRef(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
@@ -165,14 +163,12 @@ export default function BloggingPlatform() {
       return;
     }
     
-    const commentText = commentInputRef.current?.value || newComment;
-    if (commentText.trim()) {
+    if (newComment.trim()) {
       try {
-        const { data, error } = await createComment(selectedBlog.id, commentText);
+        const { data, error } = await createComment(selectedBlog.id, newComment);
         if (error) throw error;
         setComments([data, ...comments]);
         setNewComment('');
-        if (commentInputRef.current) commentInputRef.current.value = '';
       } catch (error) {
         console.error('Error adding comment:', error);
         alert('Failed to add comment');
@@ -248,21 +244,16 @@ export default function BloggingPlatform() {
     e.preventDefault();
     setAuthLoading(true);
 
-    // Read values from refs or state
-    const emailValue = emailInputRef.current?.value || email;
-    const passwordValue = passwordInputRef.current?.value || password;
-    const usernameValue = usernameInputRef.current?.value || username;
-
     try {
       if (isSignUp) {
-        const { error } = await signUp(emailValue, passwordValue, usernameValue);
+        const { error } = await signUp(email, password, username);
         if (error) {
           alert(error.message);
         } else {
           alert('Sign up successful! Please check your email to verify your account.');
         }
       } else {
-        const { error } = await signIn(emailValue, passwordValue);
+        const { error } = await signIn(email, password);
         if (error) {
           alert(error.message);
         } else {
@@ -471,11 +462,10 @@ export default function BloggingPlatform() {
           <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl opacity-0 group-hover:opacity-10 blur-xl transition-opacity"></div>
           <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
           <input
-            ref={searchInputRef}
             type="text"
             placeholder="Search articles, topics, authors..."
-            defaultValue={searchQuery}
-            onBlur={(e) => setSearchQuery(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-14 pr-6 py-4 bg-white border-2 border-gray-200 rounded-2xl focus:border-blue-500 focus:outline-none transition-all shadow-sm hover:shadow-md text-gray-800 placeholder-gray-400"
           />
         </div>
@@ -696,9 +686,8 @@ export default function BloggingPlatform() {
 
               <form onSubmit={handleAddComment} className="mb-8">
                 <textarea
-                  ref={commentInputRef}
-                  defaultValue={newComment}
-                  onBlur={(e) => setNewComment(e.target.value)}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Share your thoughts..."
                   className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none resize-none"
                   rows="3"
@@ -1059,11 +1048,10 @@ export default function BloggingPlatform() {
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-3">Username</label>
                 <input
-                  ref={usernameInputRef}
                   type="text"
                   placeholder="johndoe"
-                  defaultValue={username}
-                  onBlur={(e) => setUsername(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:border-blue-500 focus:outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
                   required
                 />
@@ -1073,11 +1061,10 @@ export default function BloggingPlatform() {
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-3">Email</label>
               <input
-                ref={emailInputRef}
                 type="email"
                 placeholder="your@email.com"
-                defaultValue={email}
-                onBlur={(e) => setEmail(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:border-blue-500 focus:outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
                 required
               />
@@ -1086,11 +1073,10 @@ export default function BloggingPlatform() {
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-3">Password</label>
               <input
-                ref={passwordInputRef}
                 type="password"
                 placeholder="••••••••"
-                defaultValue={password}
-                onBlur={(e) => setPassword(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:border-blue-500 focus:outline-none transition-all text-gray-800 placeholder-gray-400 hover:border-gray-300"
                 required
                 minLength={6}
