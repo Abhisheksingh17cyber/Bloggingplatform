@@ -1,99 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, PenSquare, User, LogOut, Search, Heart, MessageCircle, 
   Eye, Clock, Tag, TrendingUp, BookOpen, Users, FileText,
   ChevronRight, Menu, X, Settings, Trash2, Edit, Plus
 } from 'lucide-react';
-import { supabase } from './lib/supabaseClient';
-import * as supabaseAPI from './lib/supabase';
-
-// Mock data for demo
-const mockUser = {
-  id: '1',
-  username: 'John Doe',
-  email: 'john@example.com',
-  profileImage: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John',
-  bio: 'Full-stack developer and tech enthusiast',
-  isAdmin: true
-};
-
-const mockBlogs = [
-  {
-    id: '1',
-    title: 'Getting Started with React 18: A Comprehensive Guide',
-    content: '<h2>Introduction to React 18</h2><p>React 18 brings exciting new features including automatic batching, transitions, and Suspense improvements. In this guide, we\'ll explore everything you need to know...</p><h3>Automatic Batching</h3><p>React 18 automatically batches all updates, even those inside promises, setTimeout, and native event handlers...</p>',
-    excerpt: 'React 18 brings exciting new features including automatic batching, transitions, and Suspense improvements...',
-    author: mockUser,
-    category: 'Technology',
-    coverImage: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800',
-    likes: 234,
-    commentsCount: 45,
-    views: 1289,
-    tags: ['React', 'JavaScript', 'Web Development'],
-    createdAt: '2024-10-20T10:30:00Z',
-    isLiked: false
-  },
-  {
-    id: '2',
-    title: 'The Art of Minimalist Living: Finding Joy in Simplicity',
-    content: '<p>Minimalism is not about having less, it\'s about making room for more of what matters...</p>',
-    excerpt: 'Discover how minimalist living can transform your life and bring unprecedented clarity and peace...',
-    author: { ...mockUser, username: 'Sarah Johnson' },
-    category: 'Lifestyle',
-    coverImage: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800',
-    likes: 567,
-    commentsCount: 89,
-    views: 2341,
-    tags: ['Lifestyle', 'Minimalism', 'Wellness'],
-    createdAt: '2024-10-19T14:20:00Z',
-    isLiked: true
-  },
-  {
-    id: '3',
-    title: 'Machine Learning in Healthcare: Revolutionary Applications',
-    content: '<p>Artificial intelligence and machine learning are revolutionizing healthcare delivery...</p>',
-    excerpt: 'Explore how AI and ML are transforming patient care, diagnosis, and treatment planning in modern healthcare...',
-    author: { ...mockUser, username: 'Dr. Michael Chen' },
-    category: 'Technology',
-    coverImage: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800',
-    likes: 892,
-    commentsCount: 134,
-    views: 4521,
-    tags: ['AI', 'Healthcare', 'Technology'],
-    createdAt: '2024-10-18T09:15:00Z',
-    isLiked: false
-  },
-  {
-    id: '4',
-    title: 'Exploring Southeast Asia: A Digital Nomad\'s Journey',
-    content: '<p>Working remotely while traveling through Southeast Asia offers unique experiences...</p>',
-    excerpt: 'Join me as I share insights from 6 months of remote work across Thailand, Vietnam, and Bali...',
-    author: { ...mockUser, username: 'Emma Rodriguez' },
-    category: 'Travel',
-    coverImage: 'https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?w=800',
-    likes: 1243,
-    commentsCount: 201,
-    views: 5789,
-    tags: ['Travel', 'Digital Nomad', 'Asia'],
-    createdAt: '2024-10-17T16:45:00Z',
-    isLiked: true
-  }
-];
-
-const mockComments = [
-  {
-    id: '1',
-    user: { username: 'Alice Smith', profileImage: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice' },
-    content: 'Great article! Really helped me understand React 18 features better.',
-    createdAt: '2024-10-21T08:30:00Z'
-  },
-  {
-    id: '2',
-    user: { username: 'Bob Wilson', profileImage: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob' },
-    content: 'Could you elaborate more on the automatic batching feature?',
-    createdAt: '2024-10-21T09:15:00Z'
-  }
-];
+import { 
+  supabase,
+  signUp,
+  signIn,
+  signOut,
+  getCurrentUser,
+  getBlogs,
+  getBlogById,
+  createBlog,
+  updateBlog,
+  deleteBlog,
+  getComments,
+  createComment,
+  deleteComment,
+  toggleLike,
+  checkIfLiked,
+  getUserBlogs,
+  updateProfile,
+  getAllUsers,
+  getAllBlogsAdmin
+} from './lib/supabase';
 
 const categories = ['All', 'Technology', 'Lifestyle', 'Travel', 'Food', 'Health', 'Business'];
 
@@ -116,46 +47,61 @@ export default function BloggingPlatform() {
     coverImage: '',
     tags: ''
   });
+  
+  // Login form state
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
 
   // Check authentication status on mount
   useEffect(() => {
-    checkUser();
+    let mounted = true;
     
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const profile = await supabaseAPI.getUserProfile(session.user.id);
-        setUser(profile);
-        setIsLoggedIn(true);
-      } else {
-        setUser(null);
-        setIsLoggedIn(false);
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (mounted && session?.user) {
+          const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+          if (mounted) {
+            setUser(profile);
+            setIsLoggedIn(true);
+          }
+        }
+      } catch (error) {
+        console.error('Auth init error:', error);
+      } finally {
+        if (mounted) setLoading(false);
       }
-    });
-
+    };
+    
+    initAuth();
+    
     return () => {
-      authListener?.subscription?.unsubscribe();
+      mounted = false;
     };
   }, []);
 
   // Fetch blogs on mount and when category changes
   useEffect(() => {
-    fetchBlogs();
-  }, [selectedCategory]);
+    if (isLoggedIn || !loading) {
+      fetchBlogs();
+    }
+  }, [selectedCategory, isLoggedIn, loading]);
 
   // Fetch comments when blog is selected
   useEffect(() => {
-    if (selectedBlog) {
+    if (selectedBlog?.id) {
       fetchComments(selectedBlog.id);
     }
-  }, [selectedBlog]);
+  }, [selectedBlog?.id]);
 
   const checkUser = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const profile = await supabaseAPI.getUserProfile(session.user.id);
-        setUser(profile);
+      const currentUser = await getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
         setIsLoggedIn(true);
       }
     } catch (error) {
@@ -168,9 +114,9 @@ export default function BloggingPlatform() {
   const fetchBlogs = async () => {
     try {
       setLoading(true);
-      const category = selectedCategory === 'All' ? null : selectedCategory;
-      const fetchedBlogs = await supabaseAPI.getBlogs(category);
-      setBlogs(fetchedBlogs);
+      const { data, error } = await getBlogs(selectedCategory, searchQuery);
+      if (error) throw error;
+      setBlogs(data);
     } catch (error) {
       console.error('Error fetching blogs:', error);
     } finally {
@@ -180,20 +126,23 @@ export default function BloggingPlatform() {
 
   const fetchComments = async (blogId) => {
     try {
-      const fetchedComments = await supabaseAPI.getComments(blogId);
-      setComments(fetchedComments);
+      const { data, error } = await getComments(blogId);
+      if (error) throw error;
+      setComments(data);
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
   };
 
-  const filteredBlogs = blogs.filter(blog => {
-    const matchesCategory = selectedCategory === 'All' || blog.category === selectedCategory;
-    const matchesSearch = blog.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         blog.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         blog.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCategory && matchesSearch;
-  });
+  const filteredBlogs = useMemo(() => {
+    return blogs.filter(blog => {
+      const matchesCategory = selectedCategory === 'All' || blog.category === selectedCategory;
+      const matchesSearch = blog.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           blog.excerpt?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           blog.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchesCategory && matchesSearch;
+    });
+  }, [blogs, selectedCategory, searchQuery]);
 
   const handleLike = async (blogId) => {
     if (!isLoggedIn) {
@@ -202,15 +151,15 @@ export default function BloggingPlatform() {
     }
     
     try {
-      await supabaseAPI.toggleLike(blogId, user.id);
-      // Update local state
+      await toggleLike(blogId);
+      // Update state locally instead of refetching
       setBlogs(blogs.map(blog => {
         if (blog.id === blogId) {
-          const isCurrentlyLiked = blog.user_likes?.length > 0;
+          const isLiked = blog.user_likes?.length > 0;
           return {
             ...blog,
-            likes: isCurrentlyLiked ? blog.likes - 1 : blog.likes + 1,
-            user_likes: isCurrentlyLiked ? [] : [{ user_id: user.id }]
+            likes: isLiked ? blog.likes - 1 : blog.likes + 1,
+            user_likes: isLiked ? [] : [{ user_id: user.id }]
           };
         }
         return blog;
@@ -230,16 +179,10 @@ export default function BloggingPlatform() {
     
     if (newComment.trim()) {
       try {
-        const comment = await supabaseAPI.createComment(selectedBlog.id, user.id, newComment);
-        setComments([comment, ...comments]);
+        const { data, error } = await createComment(selectedBlog.id, newComment);
+        if (error) throw error;
+        setComments([data, ...comments]);
         setNewComment('');
-        
-        // Update comments count
-        setBlogs(blogs.map(blog => 
-          blog.id === selectedBlog.id 
-            ? { ...blog, comments: [...(blog.comments || []), comment] }
-            : blog
-        ));
       } catch (error) {
         console.error('Error adding comment:', error);
         alert('Failed to add comment');
@@ -256,17 +199,16 @@ export default function BloggingPlatform() {
     
     try {
       const tags = blogForm.tags.split(',').map(t => t.trim()).filter(Boolean);
-      const newBlog = await supabaseAPI.createBlog({
+      const { data, error } = await createBlog({
         title: blogForm.title,
         content: blogForm.content,
-        excerpt: blogForm.content.substring(0, 150).replace(/<[^>]*>/g, '') + '...',
         category: blogForm.category,
         cover_image: blogForm.coverImage,
         tags,
-        author_id: user.id
       });
+      if (error) throw error;
       
-      setBlogs([newBlog, ...blogs]);
+      setBlogs([data, ...blogs]);
       setBlogForm({ title: '', content: '', category: 'Technology', coverImage: '', tags: '' });
       setCurrentPage('home');
       alert('Blog created successfully!');
@@ -287,7 +229,8 @@ export default function BloggingPlatform() {
     }
     
     try {
-      await supabaseAPI.deleteBlog(blogId);
+      const { error } = await deleteBlog(blogId);
+      if (error) throw error;
       setBlogs(blogs.filter(b => b.id !== blogId));
       if (selectedBlog?.id === blogId) {
         setSelectedBlog(null);
@@ -302,7 +245,7 @@ export default function BloggingPlatform() {
 
   const handleLogout = async () => {
     try {
-      await supabaseAPI.signOut();
+      await signOut();
       setUser(null);
       setIsLoggedIn(false);
       setCurrentPage('home');
@@ -358,7 +301,7 @@ export default function BloggingPlatform() {
                   <span className="font-medium">{item.name}</span>
                 </button>
               ))}
-              {user.isAdmin && (
+              {user?.is_admin && (
                 <button
                   onClick={() => setCurrentPage('admin')}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
@@ -376,7 +319,7 @@ export default function BloggingPlatform() {
 
           <div className="hidden md:flex items-center space-x-4">
             <div className="flex items-center space-x-3 bg-gray-50 px-4 py-2 rounded-lg">
-              <img src={user?.profile_image || user?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`} alt={user?.username} className="w-8 h-8 rounded-full" />
+              <img src={user?.profile_image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`} alt={user?.username} className="w-8 h-8 rounded-full" />
               <span className="font-medium text-gray-700">{user?.username}</span>
             </div>
             <button 
@@ -412,7 +355,7 @@ export default function BloggingPlatform() {
                 <span>{item.name}</span>
               </button>
             ))}
-            {user.isAdmin && (
+            {user?.is_admin && (
               <button
                 onClick={() => { setCurrentPage('admin'); setIsMobileMenuOpen(false); }}
                 className="flex items-center space-x-3 w-full px-4 py-3 rounded-lg hover:bg-gray-50"
@@ -421,6 +364,22 @@ export default function BloggingPlatform() {
                 <span>Admin Dashboard</span>
               </button>
             )}
+            <div className="pt-4 border-t">
+              <div className="flex items-center space-x-3 px-4 py-2">
+                <img src={user?.profile_image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`} alt={user?.username} className="w-10 h-10 rounded-full" />
+                <div>
+                  <p className="font-medium text-gray-800">{user?.username}</p>
+                  <p className="text-sm text-gray-500">{user?.email}</p>
+                </div>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="flex items-center space-x-3 w-full px-4 py-3 rounded-lg text-red-600 hover:bg-red-50"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -456,6 +415,7 @@ export default function BloggingPlatform() {
             placeholder="Search articles, topics, authors..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && fetchBlogs()}
             className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
           />
         </div>
@@ -505,7 +465,7 @@ export default function BloggingPlatform() {
           >
             <div className="relative h-48 overflow-hidden">
               <img 
-                src={blog.cover_image || blog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
+                src={blog.cover_image || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
                 alt={blog.title}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
               />
@@ -536,13 +496,13 @@ export default function BloggingPlatform() {
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center space-x-2">
                   <img 
-                    src={blog.profiles?.profile_image || blog.author?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${blog.profiles?.username || blog.author?.username}`} 
-                    alt={blog.profiles?.username || blog.author?.username}
+                    src={blog.author?.profile_image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${blog.author?.username}`} 
+                    alt={blog.author?.username}
                     className="w-8 h-8 rounded-full"
                   />
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{blog.profiles?.username || blog.author?.username}</p>
-                    <p className="text-xs text-gray-500">{formatDate(blog.created_at || blog.createdAt)}</p>
+                    <p className="text-sm font-medium text-gray-900">{blog.author?.username}</p>
+                    <p className="text-xs text-gray-500">{formatDate(blog.created_at)}</p>
                   </div>
                 </div>
               </div>
@@ -550,12 +510,12 @@ export default function BloggingPlatform() {
               <div className="flex items-center justify-between mt-4 text-gray-600 text-sm">
                 <div className="flex items-center space-x-4">
                   <span className="flex items-center space-x-1">
-                    <Heart className={`w-4 h-4 ${(blog.user_likes && blog.user_likes.length > 0) || blog.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-                    <span>{blog.likes || 0}</span>
+                    <Heart className={`w-4 h-4 ${blog.is_liked ? 'fill-red-500 text-red-500' : ''}`} />
+                    <span>{blog.likes_count || 0}</span>
                   </span>
                   <span className="flex items-center space-x-1">
                     <MessageCircle className="w-4 h-4" />
-                    <span>{blog.comments?.length || blog.commentsCount || 0}</span>
+                    <span>{blog.comments_count || 0}</span>
                   </span>
                   <span className="flex items-center space-x-1">
                     <Eye className="w-4 h-4" />
@@ -569,7 +529,7 @@ export default function BloggingPlatform() {
         ))}
       </div>
 
-      {filteredBlogs.length === 0 && (
+      {filteredBlogs.length === 0 && !loading && (
         <div className="text-center py-16">
           <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-900 mb-2">No blogs found</h3>
@@ -595,7 +555,7 @@ export default function BloggingPlatform() {
 
         <article className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <img 
-            src={selectedBlog.cover_image || selectedBlog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
+            src={selectedBlog.cover_image || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
             alt={selectedBlog.title}
             className="w-full h-96 object-cover"
           />
@@ -607,7 +567,7 @@ export default function BloggingPlatform() {
               </span>
               <span className="flex items-center space-x-1 text-gray-500 text-sm">
                 <Clock className="w-4 h-4" />
-                <span>{formatDate(selectedBlog.created_at || selectedBlog.createdAt)}</span>
+                <span>{formatDate(selectedBlog.created_at)}</span>
               </span>
             </div>
 
@@ -618,12 +578,12 @@ export default function BloggingPlatform() {
             <div className="flex items-center justify-between mb-8 pb-8 border-b">
               <div className="flex items-center space-x-3">
                 <img 
-                  src={selectedBlog.profiles?.profile_image || selectedBlog.author?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedBlog.profiles?.username || selectedBlog.author?.username}`} 
-                  alt={selectedBlog.profiles?.username || selectedBlog.author?.username}
+                  src={selectedBlog.author?.profile_image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedBlog.author?.username}`} 
+                  alt={selectedBlog.author?.username}
                   className="w-12 h-12 rounded-full"
                 />
                 <div>
-                  <p className="font-semibold text-gray-900">{selectedBlog.profiles?.username || selectedBlog.author?.username}</p>
+                  <p className="font-semibold text-gray-900">{selectedBlog.author?.username}</p>
                   <p className="text-sm text-gray-500">Author</p>
                 </div>
               </div>
@@ -632,13 +592,13 @@ export default function BloggingPlatform() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleLike(selectedBlog.id); }}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
-                    (selectedBlog.user_likes && selectedBlog.user_likes.length > 0) || selectedBlog.isLiked
+                    selectedBlog.is_liked
                       ? 'bg-red-50 text-red-600' 
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  <Heart className={`w-5 h-5 ${(selectedBlog.user_likes && selectedBlog.user_likes.length > 0) || selectedBlog.isLiked ? 'fill-current' : ''}`} />
-                  <span className="font-semibold">{selectedBlog.likes || 0}</span>
+                  <Heart className={`w-5 h-5 ${selectedBlog.is_liked ? 'fill-current' : ''}`} />
+                  <span className="font-semibold">{selectedBlog.likes_count || 0}</span>
                 </button>
                 <div className="flex items-center space-x-2 text-gray-600">
                   <Eye className="w-5 h-5" />
@@ -650,7 +610,7 @@ export default function BloggingPlatform() {
             <div className="prose prose-lg max-w-none mb-8" dangerouslySetInnerHTML={{ __html: selectedBlog.content }} />
 
             <div className="flex flex-wrap gap-2 mb-8">
-              {selectedBlog.tags.map((tag, idx) => (
+              {(selectedBlog.tags || []).map((tag, idx) => (
                 <span key={idx} className="flex items-center space-x-1 bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">
                   <Tag className="w-4 h-4" />
                   <span>{tag}</span>
@@ -686,14 +646,14 @@ export default function BloggingPlatform() {
                   <div key={comment.id} className="bg-gray-50 rounded-xl p-4">
                     <div className="flex items-start space-x-3">
                       <img 
-                        src={comment.profiles?.profile_image || comment.user?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.profiles?.username || comment.user?.username}`} 
-                        alt={comment.profiles?.username || comment.user?.username}
+                        src={comment.user?.profile_image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.user?.username}`} 
+                        alt={comment.user?.username}
                         className="w-10 h-10 rounded-full"
                       />
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-semibold text-gray-900">{comment.profiles?.username || comment.user?.username}</span>
-                          <span className="text-sm text-gray-500">{formatDate(comment.created_at || comment.createdAt)}</span>
+                          <span className="font-semibold text-gray-900">{comment.user?.username}</span>
+                          <span className="text-sm text-gray-500">{formatDate(comment.created_at)}</span>
                         </div>
                         <p className="text-gray-700">{comment.content}</p>
                       </div>
@@ -808,14 +768,28 @@ export default function BloggingPlatform() {
 
   // Profile Page
   const ProfilePage = () => {
-    const userBlogs = blogs.filter(b => (b.profiles?.id || b.author?.id || b.author_id) === user.id);
+    const [userBlogs, setUserBlogs] = useState([]);
+
+    useEffect(() => {
+      const fetchUserBlogs = async () => {
+        if (user) {
+          const { data, error } = await getUserBlogs(user.id);
+          if (error) {
+            console.error("Error fetching user blogs:", error);
+          } else {
+            setUserBlogs(data);
+          }
+        }
+      };
+      fetchUserBlogs();
+    }, [user]);
 
     return (
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 mb-8 text-white">
           <div className="flex items-center space-x-6">
             <img 
-              src={user?.profile_image || user?.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`} 
+              src={user?.profile_image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`} 
               alt={user?.username}
               className="w-24 h-24 rounded-full border-4 border-white shadow-xl"
             />
@@ -828,7 +802,7 @@ export default function BloggingPlatform() {
                   <p className="text-sm opacity-80">Posts</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{userBlogs.reduce((acc, b) => acc + (b.likes || 0), 0)}</p>
+                  <p className="text-2xl font-bold">{userBlogs.reduce((acc, b) => acc + (b.likes_count || 0), 0)}</p>
                   <p className="text-sm opacity-80">Likes</p>
                 </div>
                 <div>
@@ -862,7 +836,7 @@ export default function BloggingPlatform() {
               <div key={blog.id} className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all overflow-hidden">
                 <div className="relative h-48 overflow-hidden">
                   <img 
-                    src={blog.cover_image || blog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
+                    src={blog.cover_image || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
                     alt={blog.title}
                     className="w-full h-full object-cover"
                   />
@@ -878,13 +852,13 @@ export default function BloggingPlatform() {
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
                     <span className="flex items-center space-x-1">
                       <Heart className="w-4 h-4" />
-                      <span>{blog.likes || 0} likes</span>
+                      <span>{blog.likes_count || 0} likes</span>
                     </span>
                     <span className="flex items-center space-x-1">
                       <Eye className="w-4 h-4" />
                       <span>{blog.views || 0} views</span>
                     </span>
-                    <span>{formatDate(blog.created_at || blog.createdAt)}</span>
+                    <span>{formatDate(blog.created_at)}</span>
                   </div>
 
                   <div className="flex items-center space-x-2 pt-4 border-t">
@@ -912,7 +886,24 @@ export default function BloggingPlatform() {
   };
 
   // Admin Dashboard Page
-  const AdminDashboardPage = () => (
+  const AdminDashboardPage = () => {
+    const [allUsers, setAllUsers] = useState([]);
+    const [allBlogs, setAllBlogs] = useState([]);
+
+    useEffect(() => {
+      const fetchData = async () => {
+        const { data: users, error: usersError } = await getAllUsers();
+        if (usersError) console.error("Error fetching users:", usersError);
+        else setAllUsers(users);
+
+        const { data: blogs, error: blogsError } = await getAllBlogsAdmin();
+        if (blogsError) console.error("Error fetching blogs for admin:", blogsError);
+        else setAllBlogs(blogs);
+      };
+
+      fetchData();
+    }, []);
+    return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-8 mb-8 text-white">
         <h1 className="text-3xl font-bold mb-2 flex items-center space-x-3">
@@ -925,8 +916,8 @@ export default function BloggingPlatform() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         {[
-          { icon: Users, label: 'Total Users', value: '1,234', color: 'from-blue-500 to-blue-600' },
-          { icon: FileText, label: 'Total Posts', value: blogs.length, color: 'from-green-500 to-green-600' },
+          { icon: Users, label: 'Total Users', value: allUsers.length, color: 'from-blue-500 to-blue-600' },
+          { icon: FileText, label: 'Total Posts', value: allBlogs.length, color: 'from-green-500 to-green-600' },
           { icon: MessageCircle, label: 'Total Comments', value: '456', color: 'from-purple-500 to-purple-600' },
           { icon: TrendingUp, label: 'Engagement Rate', value: '78%', color: 'from-orange-500 to-orange-600' }
         ].map((stat, idx) => (
@@ -950,11 +941,11 @@ export default function BloggingPlatform() {
         </h2>
 
         <div className="space-y-4">
-          {blogs.map((blog) => (
+          {allBlogs.map((blog) => (
             <div key={blog.id} className="flex items-center justify-between p-4 border-2 border-gray-100 rounded-xl hover:border-purple-200 transition-colors">
               <div className="flex items-center space-x-4 flex-1">
                 <img 
-                  src={blog.cover_image || blog.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
+                  src={blog.cover_image || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800'} 
                   alt={blog.title}
                   className="w-20 h-20 rounded-lg object-cover"
                 />
@@ -963,17 +954,17 @@ export default function BloggingPlatform() {
                   <div className="flex items-center space-x-4 text-sm text-gray-600">
                     <span className="flex items-center space-x-1">
                       <User className="w-4 h-4" />
-                      <span>{blog.profiles?.username || blog.author?.username}</span>
+                      <span>{blog.author?.username}</span>
                     </span>
                     <span className="flex items-center space-x-1">
                       <Heart className="w-4 h-4" />
-                      <span>{blog.likes || 0}</span>
+                      <span>{blog.likes_count || 0}</span>
                     </span>
                     <span className="flex items-center space-x-1">
                       <Eye className="w-4 h-4" />
                       <span>{blog.views || 0}</span>
                     </span>
-                    <span>{formatDate(blog.created_at || blog.createdAt)}</span>
+                    <span>{formatDate(blog.created_at)}</span>
                   </div>
                 </div>
               </div>
@@ -1004,14 +995,11 @@ export default function BloggingPlatform() {
         </h2>
 
         <div className="space-y-4">
-          {[mockUser, 
-            { ...mockUser, id: '2', username: 'Sarah Johnson', email: 'sarah@example.com' },
-            { ...mockUser, id: '3', username: 'Mike Chen', email: 'mike@example.com' }
-          ].map((u) => (
+          {allUsers.map((u) => (
             <div key={u.id} className="flex items-center justify-between p-4 border-2 border-gray-100 rounded-xl hover:border-purple-200 transition-colors">
               <div className="flex items-center space-x-4">
                 <img 
-                  src={u.profileImage} 
+                  src={u.profile_image} 
                   alt={u.username}
                   className="w-12 h-12 rounded-full"
                 />
@@ -1021,13 +1009,13 @@ export default function BloggingPlatform() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                {u.isAdmin && (
+                {u.is_admin && (
                   <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold">
                     Admin
                   </span>
                 )}
                 <span className="text-sm text-gray-600">
-                  {blogs.filter(b => b.author.username === u.username).length} posts
+                  {allBlogs.filter(b => b.author_id === u.id).length} posts
                 </span>
               </div>
             </div>
@@ -1035,35 +1023,29 @@ export default function BloggingPlatform() {
         </div>
       </div>
     </div>
-  );
+  )};
 
   // Login Page
   const LoginPage = () => {
-    const [isSignUp, setIsSignUp] = useState(false);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [username, setUsername] = useState('');
-    const [authLoading, setAuthLoading] = useState(false);
-
     const handleAuth = async (e) => {
       e.preventDefault();
       setAuthLoading(true);
 
       try {
         if (isSignUp) {
-          const result = await supabaseAPI.signUp(email, password, username);
-          if (result.error) {
-            alert(result.error.message);
+          const { error } = await signUp(email, password, username);
+          if (error) {
+            alert(error.message);
           } else {
             alert('Sign up successful! Please check your email to verify your account.');
           }
         } else {
-          const result = await supabaseAPI.signIn(email, password);
-          if (result.error) {
-            alert(result.error.message);
+          const { error } = await signIn(email, password);
+          if (error) {
+            alert(error.message);
           } else {
-            const profile = await supabaseAPI.getUserProfile(result.data.user.id);
-            setUser(profile);
+            const currentUser = await getCurrentUser();
+            setUser(currentUser);
             setIsLoggedIn(true);
           }
         }
